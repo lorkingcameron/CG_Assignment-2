@@ -3,34 +3,24 @@ import Stats from 'three/addons/libs/stats.module.js';
 import {WEBGL} from 'three/addons/WebGL.js';
 import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
 import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
-import {GlitchPass } from 'three/addons/postprocessing/GlitchPass.js';
-import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 export const graphics = (function() {
   return {
-    PostFX: {
-      UnrealBloomPass: UnrealBloomPass,
-      GlitchPass: GlitchPass,
-    },
     Graphics: class {
       constructor(game) {
       }
 
       Initialize() {
-        if (!WEBGL.isWebGL2Available()) {
-          return false;
-        }
-
-        this._threejs = new THREE.WebGLRenderer({
+        this.renderer = new THREE.WebGLRenderer({
             antialias: true,
         });
-        this._threejs.shadowMap.enabled = true;
-        this._threejs.shadowMap.type = THREE.PCFSoftShadowMap;
-        this._threejs.setPixelRatio(window.devicePixelRatio);
-        this._threejs.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        this.renderer.setPixelRatio(window.devicePixelRatio);
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
 
         const target = document.getElementById('target');
-        target.appendChild(this._threejs.domElement);
+        target.appendChild(this.renderer.domElement);
 
         this._stats = new Stats();
 				target.appendChild(this._stats.dom);
@@ -48,16 +38,16 @@ export const graphics = (function() {
 
         this._scene = new THREE.Scene();
 
-        this._CreateLights();
+        this._addLights();
 
-        const composer = new EffectComposer(this._threejs);
+        const composer = new EffectComposer(this.renderer);
         this._composer = composer;
         this._composer.addPass(new RenderPass(this._scene, this._camera));
 
         return true;
       }
 
-      _CreateLights() {
+      _addLights() {
         let light = new THREE.DirectionalLight(0xFFFFFF, 1, 100);
         light.position.set(100, 100, 100);
         light.target.position.set(0, 0, 0);
@@ -87,19 +77,10 @@ export const graphics = (function() {
         this._scene.add(light);
       }
 
-      AddPostFX(passClass, params) {
-        const pass = new passClass();
-        for (const k in params) {
-          pass[k] = params[k];
-        }
-        this._composer.addPass(pass);
-        return pass;
-      }
-
       _OnWindowResize() {
         this._camera.aspect = window.innerWidth / window.innerHeight;
         this._camera.updateProjectionMatrix();
-        this._threejs.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
         this._composer.setSize(window.innerWidth, window.innerHeight);
       }
 

@@ -12,7 +12,6 @@ export const game = (function() {
       _Initialize() {
         this._graphics = new graphics.Graphics(this);
         if (!this._graphics.Initialize()) {
-          this._DisplayError('WebGL2 is not available.');
           return;
         }
 
@@ -25,7 +24,7 @@ export const game = (function() {
 
       _CreateControls() {
         const controls = new OrbitControls(
-            this._graphics._camera, this._graphics._threejs.domElement);
+            this._graphics._camera, this._graphics.renderer.domElement);
         controls.target.set(0, 0, 0);
         controls.update();
         return controls;

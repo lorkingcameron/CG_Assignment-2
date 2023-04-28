@@ -1,10 +1,7 @@
 import * as THREE from 'three';
 import {game} from './game.js';
-import {graphics} from './graphics.js';
 import {math} from './math.js';
 import {visibility} from './visibility.js';
-
-let _APP = null;
 
 const _NUM_BOIDS = 30;
 const _BOID_SPEED = 5;
@@ -14,42 +11,7 @@ const _BOID_FORCE_ALIGNMENT = 5;
 const _BOID_FORCE_SEPARATION = 8;
 const _BOID_FORCE_COHESION = 4;
 const _BOID_FORCE_WANDER = 5;
-
-
-class LineRenderer {
-  constructor(game) {
-    this._game = game;
-
-    this._materials = {};
-    this._group = new THREE.Group();
-
-    this._game._graphics.Scene.add(this._group);
-  }
-
-  Reset() {
-    this._lines = [];
-    this._group.remove(...this._group.children);
-  }
-
-  Add(pt1, pt2, hexColour) {
-    const points = [];
-    points.push(pt1.clone());
-    points.push(pt2.clone());
-    const geometry = new THREE.BufferGeometry().setFromPoints(points);
-
-    let material = this._materials[hexColour];
-    if (!material) {
-      this._materials[hexColour] = new THREE.LineBasicMaterial(
-          {color: hexColour});
-      material = this._materials[hexColour];
-    }
-
-    const line = new THREE.Line(geometry, material);
-    this._lines.push(line);
-    this._group.add(line);
-  }
-}
-
+const _BOID_FORCE_ORIGIN = 1000;
 
 class Boid {
   constructor(game, params) {
@@ -63,11 +25,11 @@ class Boid {
     this._group.add(this._mesh);
     this._group.position.set(
         math.rand_range(-50, 50),
-        0,
+        math.rand_range(-50, 50),
         math.rand_range(-50, 50));
     this._direction = new THREE.Vector3(
         math.rand_range(-1, 1),
-        0,
+        math.rand_range(-1, 1),
         math.rand_range(-1, 1));
     this._velocity = this._direction.clone();
 
@@ -83,36 +45,8 @@ class Boid {
     this._visibilityIndex = game._visibilityGrid.UpdateItem(
         this._mesh.uuid, this);
 
-    this._wanderAngle = 0;
+    this._wanderAngle = Math.PI;
     this._params = params;
-  }
-
-  DisplayDebug() {
-    const geometry = new THREE.SphereGeometry(10, 64, 64);
-    const material = new THREE.MeshBasicMaterial({
-      color: 0xFF0000,
-      transparent: true,
-      opacity: 0.25,
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    this._group.add(mesh);
-
-    this._mesh.material.color.setHex(0xFF0000);
-    this._displayDebug = true;
-    this._lineRenderer = new LineRenderer(this._game);
-  }
-
-  _UpdateDebug(local) {
-    this._lineRenderer.Reset();
-    this._lineRenderer.Add(
-        this.Position, this.Position.clone().add(this._velocity),
-        0xFFFFFF);
-    for (const e of local) {
-      this._lineRenderer.Add(this.Position, e.Position, 0x00FF00);
-      this._lineRenderer.Add(
-          e.Position, e.Position.clone().add(e._velocity),
-          0xFFFFFF);
-    }
   }
 
   get Position() {
@@ -132,10 +66,6 @@ class Boid {
   }
 
   Step(timeInSeconds) {
-    if (this._displayDebug) {
-      let a = 0;
-    }
-
     const local = this._game._visibilityGrid.GetLocalEntities(
         this.Position, 15);
 
@@ -155,10 +85,6 @@ class Boid {
 
     this._visibilityIndex = this._game._visibilityGrid.UpdateItem(
         this._mesh.uuid, this, this._visibilityIndex);
-
-    if (this._displayDebug) {
-      this._UpdateDebug(local);
-    }
   }
 
   CheckBounds() {
@@ -178,41 +104,34 @@ class Boid {
   }
 
   _ApplySteering(timeInSeconds, local) {
-    const forces = [
-      this._ApplyWander(),
-    ];
-
-    if (this._params.guiParams.separationEnabled) {
-      forces.push(this._ApplySeparation(local));
-    }
-
-    if (this._params.guiParams.alignmentEnabled) {
-      forces.push(this._ApplyAlignment(local));
-    }
-
-    if (this._params.guiParams.cohesionEnabled) {
-      forces.push(this._ApplyCohesion(local));
-    }
+    const separationVelocity = this._ApplySeparation(local);
+    const alignmentVelocity = this._ApplyAlignment(local);
+    const cohesionVelocity = this._ApplyCohesion(local);
+    const originVelocity = this._ApplySeek(new THREE.Vector3(0, 0, 0));
+    const wanderVelocity = this._ApplyWander();
 
     const steeringForce = new THREE.Vector3(0, 0, 0);
-    for (const f of forces) {
-      steeringForce.add(f);
-    }
+    steeringForce.add(separationVelocity);
+    steeringForce.add(alignmentVelocity);
+    steeringForce.add(originVelocity);
+    steeringForce.add(cohesionVelocity);
+    steeringForce.add(wanderVelocity);
 
     steeringForce.multiplyScalar(this._acceleration * timeInSeconds);
 
-    // Lock to xz dimension
-    steeringForce.multiply(new THREE.Vector3(1, 0, 1));
-
     // Clamp the force applied
-    steeringForce.normalize();
-    steeringForce.multiplyScalar(this._maxSteeringForce);
+    if (steeringForce.length() > this._maxSteeringForce) {
+      steeringForce.normalize();
+      steeringForce.multiplyScalar(this._maxSteeringForce);
+    }
 
     this._velocity.add(steeringForce);
 
-    // Lock velocity for debug mode
-    this._velocity.normalize();
-    this._velocity.multiplyScalar(this._maxSpeed);
+    // Clamp velocity
+    if (this._velocity.length() > this._maxSpeed) {
+      this._velocity.normalize();
+      this._velocity.multiplyScalar(this._maxSpeed);
+    }
 
     this._direction = this._velocity.clone();
     this._direction.normalize();
@@ -251,15 +170,6 @@ class Boid {
     }
     return forceVector;
   }
-
-  
-  // _CalculateSeparationForce() {
-  //   totalForce = 0;
-  //   for (every boid in the area) {
-  //     totalForce += (ourPosition - theirPosition) / distanceBetween;
-  //   }
-  //   return totalForce;
-  // }
 
   _CalculateSeparationForce(local) {
     const forceVector = new THREE.Vector3(0, 0, 0);
@@ -315,10 +225,21 @@ class Boid {
 
     return directionToAveragePosition;
   }
+
+  _ApplySeek(destination) {
+    const distance = Math.max(0,((
+        this.Position.distanceTo(destination) - 50) / 500)) ** 2;
+    const direction = destination.clone().sub(this.Position);
+    direction.normalize();
+
+    const forceVector = direction.multiplyScalar(
+        _BOID_FORCE_ORIGIN * distance);
+    return forceVector;
+  }
 }
 
 
-class DebugDemo extends game.Game {
+class Boids extends game.Game {
   constructor() {
     super();
   }
@@ -327,9 +248,9 @@ class DebugDemo extends game.Game {
     this._entities = [];
 
     this._guiParams = {
-      separationEnabled: false,
-      cohesionEnabled: false,
-      alignmentEnabled: false,
+      separationEnabled: true,
+      cohesionEnabled: true,
+      alignmentEnabled: true,
     };
     this._gui = new dat.GUI();
     this._gui.add(this._guiParams, "separationEnabled");
@@ -345,18 +266,6 @@ class DebugDemo extends game.Game {
   }
 
   _CreateEntities() {
-    const plane = new THREE.Mesh(
-        new THREE.PlaneGeometry(400, 400, 32, 32),
-        new THREE.MeshStandardMaterial({
-            color: 0x808080,
-            transparent: false,
-        }));
-    plane.position.set(0, -2, 0);
-    plane.castShadow = false;
-    plane.receiveShadow = false;
-    plane.rotation.x = -Math.PI / 2;
-    this._graphics.Scene.add(plane);
-
     this._visibilityGrid = new visibility.VisibilityGrid(
         [new THREE.Vector3(-500, 0, -500), new THREE.Vector3(500, 0, 500)],
         [100, 100]);
@@ -380,7 +289,6 @@ class DebugDemo extends game.Game {
       const e = new Boid(this, params);
       this._entities.push(e);
     }
-    this._entities[0].DisplayDebug();
   }
 
   _OnStep(timeInSeconds) {
@@ -401,9 +309,4 @@ class DebugDemo extends game.Game {
   }
 }
 
-
-function _Main() {
-  _APP = new DebugDemo();
-}
-
-_Main();
+new Boids();
