@@ -1,6 +1,4 @@
 import * as THREE from 'three';
-import Stats from 'three/addons/libs/stats.module.js';
-import {WEBGL} from 'three/addons/WebGL.js';
 import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
 import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
 
@@ -21,9 +19,6 @@ export const graphics = (function() {
 
         const target = document.getElementById('target');
         target.appendChild(this.renderer.domElement);
-
-        this._stats = new Stats();
-				target.appendChild(this._stats.dom);
 
         window.addEventListener('resize', () => {
           this._OnWindowResize();
@@ -75,6 +70,8 @@ export const graphics = (function() {
         light.target.position.set(0, 0, 0);
         light.castShadow = false;
         this._scene.add(light);
+        const ambientLight = new THREE.AmbientLight(new THREE.Color(1, 1, 1), 1.1); // AMBIENT LIGHTING
+        this._scene.add(ambientLight);
       }
 
       _OnWindowResize() {
@@ -90,7 +87,6 @@ export const graphics = (function() {
 
       Render(timeInSeconds) {
         this._composer.render();
-        this._stats.update();
       }
     }
   };

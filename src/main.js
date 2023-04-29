@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import {OBJLoader} from 'three/addons/loaders/OBJLoader.js';
+import {MTLLoader} from 'three/addons/loaders/MTLLoader.js';
 import {game} from './game.js';
 import {math} from './math.js';
 import {visibility} from './visibility.js';
@@ -17,7 +19,7 @@ class Boid {
   constructor(game, params) {
     this._mesh = new THREE.Mesh(
         params.geometry,
-        new THREE.MeshStandardMaterial({color: params.colour}));
+        params.material);
     this._mesh.castShadow = true;
     this._mesh.receiveShadow = false;
 
@@ -258,11 +260,27 @@ class Boids extends game.Game {
     this._gui.add(this._guiParams, "alignmentEnabled");
     this._gui.close();
 
-    const geoLibrary = {
-      cone: new THREE.ConeGeometry(1, 2, 32)
-    };
+    const objLoader = new OBJLoader();
+    const mtlLoader = new MTLLoader();
+    const geoLibrary = {};
+    mtlLoader.load(
+      '../models/squid.mtl',
+      (mtl) => {
+        mtl.preload();
+        objLoader.setMaterials(mtl);
+        objLoader.load(
+          '../models/squid.obj',
+          (object) => {
+            geoLibrary.boid = object.children[0].geometry;
+            geoLibrary.boidMat = object.children[0].material;
+            this._CreateBoids(geoLibrary);
+          }
+        )
+      }
+    )
+    
     this._CreateEntities();
-    this._CreateBoids(geoLibrary);
+    
   }
 
   _CreateEntities() {
@@ -276,7 +294,8 @@ class Boids extends game.Game {
 
   _CreateBoids(geoLibrary) {
     let params = {
-      geometry: geoLibrary.cone,
+      geometry: geoLibrary.boid,
+      material: geoLibrary.boidMat,
       speedMin: 1.0,
       speedMax: 1.0,
       speed: _BOID_SPEED,
